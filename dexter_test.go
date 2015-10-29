@@ -16,47 +16,51 @@ func (d dcloser) Close() error {
 
 func TestDexter(t *testing.T) {
 
-	f1 := func(dex *Dexter, in <-chan string) {
-		dex.Add(1)
-		defer dex.Done()
-		for dex.Alive() {
-			_, _ = <-in
+	stage1 := NewTarget("stage1")
+	f1 := func(target *Target, in <-chan string) {
+		target.Add(1)
+		defer target.Done()
+		for _ = range in {
 		}
 	}
+	c1In := make(chan string)
+	stage1.TrackChannel(c1In)
 
-	f2 := func(dex *Dexter, in <-chan int) {
-		dex.Add(1)
-		defer dex.Done()
-		for dex.Alive() {
+	stage2 := NewTarget("stage2")
+	f2 := func(target *Target, in <-chan int) {
+		target.Add(1)
+		defer target.Done()
+		for _ = range in {
 			_ = <-in
 		}
 	}
+	c2In := make(chan int)
+	stage2.TrackChannel(c2In)
 
-	f3 := func(dex *Dexter, in <-chan bool) {
-		dex.Add(1)
-		defer dex.Done()
-		for dex.Alive() {
+	stage3 := NewTarget("stage3")
+	f3 := func(target *Target, in <-chan bool) {
+		target.Add(1)
+		defer target.Done()
+		for _ = range in {
 			<-in
 		}
 	}
-
-	c1In := make(chan string)
-	c2In := make(chan int)
 	c3In := make(chan bool)
+	stage3.TrackChannel(c3In)
+	stage3.TrackCloser(dcloser{})
+
+	go f1(stage1, c1In)
+	go f2(stage2, c2In)
+	go f3(stage3, c3In)
 
 	dex := NewDexter()
-	dex.TrackChannelsToKill(c1In)
-	dex.TrackChannelsToKill(c2In)
-	dex.TrackChannelsToKill(c3In)
-	dex.TrackToKill(dcloser{})
-
-	go f1(dex, c1In)
-	go f2(dex, c2In)
-	go f3(dex, c3In)
+	dex.Track(stage1)
+	dex.Track(stage2)
+	dex.Track(stage3)
 
 	go func() {
 		// kill after it waiting for small amount of time
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Millisecond)
 		syscall.Kill(os.Getpid(), syscall.SIGINT)
 	}()
 	dex.WaitAndKill()

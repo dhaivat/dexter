@@ -1,6 +1,9 @@
 // Package dexter provides a thin wrapper around sync.WaitGroup and some
-// convenience methods for tracking SIGINT and SIGTERM along with an Alive()
-// method that returns state of application to the caller.
+// convenience methods for tracking SIGINT and SIGTERM
+//
+// Each stage of application that needs to shutdown should have a correspondign Target
+// this target will be killed in the order it was added to dexter.  This allows shutdown
+// in stages.
 //
 // Usage example:
 //
@@ -9,21 +12,31 @@
 //   import "os"
 //   import "github.com/ceocoder/dexter"
 //
-//   func foo(dex *dexter.Dexter, in <-chan string) {
-//		 for dex.Alive() {
-//			_ := <- in
+//   func foo(dex *dexter.Target, in <-chan string) {
+//		 for _ := range in {
+//
 //		 }
 //   }
 //
 //   func main() {
 //		 dex := NewDexter()
 //
+//		 foo := NewTarget("foo")
 //		 in := make(chan string)
-//		 go foo(&dex, in)
+//		 foo.TrackChannel(in)
 //
 //		 f, err := os.Open("file.go")
-//		 dex.TrackChannelsToKill(in)
-//		 dex.TrackToKill(f)
+//		 foo.TrackCloser(f)
+//
+//		 go foo(foo, in)
+//
+//       bar := NewTarget("bar")
+//		 out := make(chan int)
+//
+//       bar.TrackChannel(out)
+//
+//		 dex.Track(foo)
+//	     dex.Track(bar)
 //
 //		 dex.WaitAndKill()
 //   }
@@ -31,13 +44,9 @@
 package dexter
 
 import (
-	"errors"
-	"io"
 	"log"
 	"os"
 	"os/signal"
-	"reflect"
-	"sync"
 	"syscall"
 )
 
@@ -53,11 +62,8 @@ func init() {
 // Dexter is a wrapper around sync.WaitGroup with convenience methods to intercept
 // SIGINT and SIGTERM and provides a way of graceful shutdown
 type Dexter struct {
-	wg        sync.WaitGroup
-	waiter    chan os.Signal
-	channels  []interface{}
-	monitored []io.Closer
-	keepAlive bool
+	waiter  chan os.Signal
+	targets []*Target
 }
 
 // NewDexter returns a Dexter value.  One typically needs only single
@@ -66,51 +72,17 @@ type Dexter struct {
 // channels it is currently monitoring.
 func NewDexter() *Dexter {
 	dex := &Dexter{
-		waiter:    make(chan os.Signal),
-		keepAlive: true,
-		monitored: []io.Closer{},
+		waiter:  make(chan os.Signal),
+		targets: []*Target{},
 	}
 	signal.Notify(dex.waiter, syscall.SIGINT, syscall.SIGTERM)
 	return dex
 }
 
-// Add is a really thin wrapper around sync.WorkGroup.Add
-func (d *Dexter) Add(delta int) {
-	d.wg.Add(delta)
-}
-
-// Done is a really thin wrapper around sync.WorkGroup.Done
-func (d *Dexter) Done() {
-	d.wg.Done()
-}
-
-// Alive returns value of keepAlive - it will be set to false once
-// SIGINT or SIGTERM is received. Can be used as exit condition for a loop
-//
-//		dex := NewDexter()
-//		for dex.Alive() {
-//			...
-//		}
-func (d *Dexter) Alive() bool {
-	return d.keepAlive
-}
-
-// TrackToKill keeps list of io.Closers to stop when we receive the shutdown signal
-func (d *Dexter) TrackToKill(closable io.Closer) {
-	d.monitored = append(d.monitored, closable)
-}
-
-// TrackChannelsToKill keeps a list of channels to be closed upon receiving
-// SIGINT or SIGTERM
-// Since there is no way to pass a chan interface{} for any channel type
-// We are using *just* interface as the type of arg here.
-// If passed value is NOT of type chan - an error will be returned.
-func (d *Dexter) TrackChannelsToKill(channel interface{}) error {
-	if reflect.TypeOf(channel).Kind() == reflect.Chan {
-		d.channels = append(d.channels, channel)
-		return nil
-	}
-	return errors.New("channel is not of type chan")
+// Track adds a new target to Dexter's kill list,
+// this target will be killed in the order it was inserted in
+func (d *Dexter) Track(target *Target) {
+	d.targets = append(d.targets, target)
 }
 
 // WaitAndKill for SIGINT or SIGTERM upon intercepting either one
@@ -120,18 +92,13 @@ func (d *Dexter) TrackChannelsToKill(channel interface{}) error {
 func (d *Dexter) WaitAndKill() {
 	dlog.Println("Started Dexter - waiting for SIGINT or SIGTERM")
 	dlog.Printf("Received %v signal, shutting down\n", <-d.waiter)
-	dlog.Printf("Closing %d closers\n", len(d.monitored))
-	for _, val := range d.monitored {
-		val.Close()
-	}
+	dlog.Printf("Killing %d targets\n", len(d.targets))
 
-	dlog.Printf("Closing %d channels\n", len(d.channels))
-	for _, channel := range d.channels {
-		reflect.ValueOf(channel).Close()
+	for _, target := range d.targets {
+		target.kill()
+		target.wg.Wait()
 	}
 
 	// stop loops
-	d.keepAlive = false
-	dlog.Println("Waiting for go routines to die")
-	d.wg.Wait()
+	dlog.Println("Killed all targets returning control")
 }
