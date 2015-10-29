@@ -7,38 +7,38 @@
 //
 // Usage example:
 //
-//   package main
+//	package main
 //
-//   import "os"
-//   import "github.com/ceocoder/dexter"
+//	import "os"
+//	import "github.com/ceocoder/dexter"
 //
-//   func foo(dex *dexter.Target, in <-chan string) {
+//	func foo(dex *dexter.Target, in <-chan string) {
 //		 for _ := range in {
 //
 //		 }
-//   }
+//	}
 //
-//   func main() {
-//		 dex := NewDexter()
+//	func main() {
+//		dex := NewDexter()
 //
-//		 foo := NewTarget("foo")
-//		 in := make(chan string)
-//		 foo.TrackChannel(in)
+//		foo := NewTarget("foo")
+//		in := make(chan string)
+//		foo.TrackChannel(in)
 //
-//		 f, err := os.Open("file.go")
-//		 foo.TrackCloser(f)
+//		f, err := os.Open("file.go")
+//		foo.TrackCloser(f)
 //
-//		 go foo(foo, in)
+//		go foo(foo, in)
 //
-//       bar := NewTarget("bar")
-//		 out := make(chan int)
+//		bar := NewTarget("bar")
+//		out := make(chan int)
 //
-//       bar.TrackChannel(out)
+//		bar.TrackChannel(out)
 //
-//		 dex.Track(foo)
-//	     dex.Track(bar)
+//		dex.Track(foo)
+//		dex.Track(bar)
 //
-//		 dex.WaitAndKill()
+//		dex.WaitAndKill()
 //   }
 //
 package dexter
