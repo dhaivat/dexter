@@ -56,6 +56,11 @@ func (t *Target) Done() {
 	t.wg.Done()
 }
 
+// Wait is a really thin wrapper around sync.WorGroup.Wait
+func (t *Target) Wait() {
+	t.wg.Wait()
+}
+
 func (t *Target) kill() {
 	dlog.Printf("Killing target %s\n", t.name)
 	for _, val := range t.monitored {

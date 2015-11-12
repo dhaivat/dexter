@@ -96,7 +96,7 @@ func (d *Dexter) WaitAndKill() {
 
 	for _, target := range d.targets {
 		target.kill()
-		target.wg.Wait()
+		target.Wait()
 	}
 
 	// stop loops
