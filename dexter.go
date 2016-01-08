@@ -48,6 +48,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 var (
@@ -62,8 +63,10 @@ func init() {
 // Dexter is a wrapper around sync.WaitGroup with convenience methods to intercept
 // SIGINT and SIGTERM and provides a way of graceful shutdown
 type Dexter struct {
-	waiter  chan os.Signal
-	targets []*Target
+	waiter          chan os.Signal
+	targets         []*Target
+	forceKillWindow time.Duration
+	exitFunc        func(int)
 }
 
 // NewDexter returns a Dexter value.  One typically needs only single
@@ -72,11 +75,19 @@ type Dexter struct {
 // channels it is currently monitoring.
 func NewDexter() *Dexter {
 	dex := &Dexter{
-		waiter:  make(chan os.Signal),
-		targets: []*Target{},
+		waiter:          make(chan os.Signal),
+		targets:         []*Target{},
+		forceKillWindow: 5 * time.Second,
+		exitFunc:        os.Exit,
 	}
 	signal.Notify(dex.waiter, syscall.SIGINT, syscall.SIGTERM)
 	return dex
+}
+
+// SetForceKillInterval sets amount of time (in seconds) to wait before exiting with
+// non-zero return code, this helps one avoid stuck processes
+func (d *Dexter) SetForceKillInterval(interval time.Duration) {
+	d.forceKillWindow = interval
 }
 
 // Track adds a new target to Dexter's kill list,
@@ -86,13 +97,20 @@ func (d *Dexter) Track(target *Target) {
 }
 
 // WaitAndKill for SIGINT or SIGTERM upon intercepting either one
-// * Set Run() value to false.
 // * Close all closeable interfaces
 // * Close all monitored channels
 func (d *Dexter) WaitAndKill() {
 	dlog.Println("Started Dexter - waiting for SIGINT or SIGTERM")
 	dlog.Printf("Received %v signal, shutting down\n", <-d.waiter)
 	dlog.Printf("Killing %d targets\n", len(d.targets))
+
+	// starting a routine in the background to kill if process doesn't die
+	// gracefully in set time
+	timer := time.AfterFunc(1*time.Second, func() {
+		dlog.Println("Timeout! - force exiting")
+		d.exitFunc(1)
+	})
+	defer timer.Stop()
 
 	for _, target := range d.targets {
 		target.kill()
