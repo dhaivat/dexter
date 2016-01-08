@@ -106,7 +106,7 @@ func (d *Dexter) WaitAndKill() {
 
 	// starting a routine in the background to kill if process doesn't die
 	// gracefully in set time
-	timer := time.AfterFunc(1*time.Second, func() {
+	timer := time.AfterFunc(d.forceKillWindow, func() {
 		dlog.Println("Timeout! - force exiting")
 		d.exitFunc(1)
 	})
