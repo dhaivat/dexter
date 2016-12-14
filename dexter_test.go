@@ -21,7 +21,7 @@ func TestDexter(t *testing.T) {
 	stage1.Add(1)
 	f1 := func(target *Target, in <-chan string) {
 		defer target.Done()
-		for _ = range in {
+		for range in {
 		}
 	}
 	c1In := make(chan string)
@@ -31,7 +31,7 @@ func TestDexter(t *testing.T) {
 	stage2.Add(1)
 	f2 := func(target *Target, in <-chan int) {
 		defer target.Done()
-		for _ = range in {
+		for range in {
 			_ = <-in
 		}
 	}
@@ -42,7 +42,7 @@ func TestDexter(t *testing.T) {
 	stage3.Add(1)
 	f3 := func(target *Target, in <-chan bool) {
 		defer target.Done()
-		for _ = range in {
+		for range in {
 			<-in
 		}
 	}
